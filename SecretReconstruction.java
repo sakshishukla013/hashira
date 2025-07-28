@@ -14,61 +14,89 @@ public class SecretReconstruction {
     }
 
     public static void main(String[] args) throws Exception {
-        // 1. Read the JSON file into a string
+
+        // 1. Read input.json
         String content = new String(Files.readAllBytes(Paths.get("input.json")));
 
-        // 2. Remove unnecessary characters
-        content = content.replaceAll("[{}\\n\\t ]", "");
-        content = content.replace("\"", "");  // remove quotes
+        // Remove whitespace and quotes for manual parsing
+        content = content.replaceAll("[\\n\\t ]", "");
+        content = content.replace("\"", "");
 
-        // 3. Extract n and k
-        int n = Integer.parseInt(content.split("n:")[1].split(",")[0]);
-        int k = Integer.parseInt(content.split("k:")[1].split(",")[0]);
+        // -----------------------------
+        // Parse n and k from "keys"
+        // -----------------------------
+        String keysBlock = content.split("keys:")[1];
+        keysBlock = keysBlock.substring(0, keysBlock.indexOf("}"));
+        keysBlock = keysBlock.replaceAll("[{}]", "");
 
-        // 4. Extract shares part
-        String sharesPart = content.split("shares:")[1];
-        sharesPart = sharesPart.replaceAll("[{}]", "");
+        // Safe extraction for n
+        String nPart = keysBlock.split("n:")[1].split(",")[0];
+        nPart = nPart.replaceAll("[^0-9]", "");
+        int n = Integer.parseInt(nPart);
 
-        // Debug output to see how shares look
-        System.out.println("DEBUG sharesPart before splitting: " + sharesPart);
+        // Safe extraction for k
+        String kPart = keysBlock.split("k:")[1];
+        kPart = kPart.replaceAll("[^0-9]", "");
+        int k = Integer.parseInt(kPart);
 
-        String[] pairs = sharesPart.split(",");
+        // -----------------------------
+        // Shares parsing
+        // -----------------------------
+        String afterKeys = content.split("},", 2)[1]; // everything after "},"
+        afterKeys = afterKeys.replaceAll("[{}]", ""); // remove braces
+
+        // Each share line looks like:
+        // 1:base:6,value:13444211440455345511
+        String[] allParts = afterKeys.split(",");
 
         List<Share> shares = new ArrayList<>();
-        for (String p : pairs) {
-            if (p == null) continue;
-            p = p.trim();
-            if (p.isEmpty()) continue;
+        for (int i = 0; i < allParts.length;) {
 
-            // Debug each piece
-            System.out.println("DEBUG pair: " + p);
-
-            String[] kv = p.split(":");
-            if (kv.length != 2) {
-                System.out.println("Skipping malformed pair: " + p);
+            String block = allParts[i].trim();
+            if (block.isEmpty()) {
+                i++;
                 continue;
             }
 
-            String xStr = kv[0].trim();
-            String yStr = kv[1].trim();
-
-            // Debug before parsing
-            System.out.println("Parsing x=" + xStr + " y=" + yStr);
-
-            try {
-                BigInteger x = new BigInteger(xStr);
-                BigInteger y = new BigInteger(yStr);
-                shares.add(new Share(x, y));
-            } catch (Exception ex) {
-                System.out.println("Invalid number in pair: " + p);
+            // First item: "<index>:base:<b>"
+            String[] part1 = block.split(":");
+            if (part1.length < 3) {
+                i++;
+                continue;
             }
+
+            int index = Integer.parseInt(part1[0]);
+            int base = Integer.parseInt(part1[2]);
+
+            // Move to the next array element for value
+            i++;
+            if (i >= allParts.length) break;
+            String valueBlock = allParts[i].trim();
+
+            if (!valueBlock.startsWith("value:")) {
+                i++;
+                continue;
+            }
+
+            String value = valueBlock.split("value:")[1];
+
+            // Convert to BigInteger using the given base
+            BigInteger y = new BigInteger(value, base);
+
+            shares.add(new Share(BigInteger.valueOf(index), y));
+            i++;
         }
 
-        // 5. Find and print the secret
+        // -----------------------------
+        // Compute and print secret
+        // -----------------------------
         BigInteger secret = findSecret(shares, k);
         System.out.println("Secret: " + secret);
     }
 
+    // =====================================================
+    // Secret reconstruction (Lagrange interpolation)
+    // =====================================================
     static BigInteger findSecret(List<Share> shares, int k) {
         List<List<Share>> comb = new ArrayList<>();
         combinations(shares, k, 0, new ArrayList<>(), comb);
