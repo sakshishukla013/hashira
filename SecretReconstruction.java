@@ -14,51 +14,46 @@ public class SecretReconstruction {
     }
 
     public static void main(String[] args) throws Exception {
+        // Process both JSON files
+        processFile("input_small.json");
+        processFile("input_large.json");
+    }
 
-        // 1. Read input.json
-        String content = new String(Files.readAllBytes(Paths.get("input.json")));
-
-        // Remove whitespace and quotes for manual parsing
+    private static void processFile(String filename) throws Exception {
+        String content = new String(Files.readAllBytes(Paths.get(filename)));
         content = content.replaceAll("[\\n\\t ]", "");
         content = content.replace("\"", "");
 
-        // -----------------------------
-        // Parse n and k from "keys"
-        // -----------------------------
+        // Extract keys block
         String keysBlock = content.split("keys:")[1];
         keysBlock = keysBlock.substring(0, keysBlock.indexOf("}"));
         keysBlock = keysBlock.replaceAll("[{}]", "");
 
-        // Safe extraction for n
+        // Extract n
         String nPart = keysBlock.split("n:")[1].split(",")[0];
         nPart = nPart.replaceAll("[^0-9]", "");
         int n = Integer.parseInt(nPart);
 
-        // Safe extraction for k
+        // Extract k
         String kPart = keysBlock.split("k:")[1];
         kPart = kPart.replaceAll("[^0-9]", "");
         int k = Integer.parseInt(kPart);
 
-        // -----------------------------
-        // Shares parsing
-        // -----------------------------
-        String afterKeys = content.split("},", 2)[1]; // everything after "},"
-        afterKeys = afterKeys.replaceAll("[{}]", ""); // remove braces
+        // Extract shares part
+        String afterKeys = content.split("},", 2)[1];
+        afterKeys = afterKeys.replaceAll("[{}]", "");
 
-        // Each share line looks like:
-        // 1:base:6,value:13444211440455345511
         String[] allParts = afterKeys.split(",");
 
         List<Share> shares = new ArrayList<>();
         for (int i = 0; i < allParts.length;) {
-
             String block = allParts[i].trim();
             if (block.isEmpty()) {
                 i++;
                 continue;
             }
 
-            // First item: "<index>:base:<b>"
+            // "<index>:base:<b>"
             String[] part1 = block.split(":");
             if (part1.length < 3) {
                 i++;
@@ -68,7 +63,6 @@ public class SecretReconstruction {
             int index = Integer.parseInt(part1[0]);
             int base = Integer.parseInt(part1[2]);
 
-            // Move to the next array element for value
             i++;
             if (i >= allParts.length) break;
             String valueBlock = allParts[i].trim();
@@ -79,24 +73,18 @@ public class SecretReconstruction {
             }
 
             String value = valueBlock.split("value:")[1];
-
-            // Convert to BigInteger using the given base
             BigInteger y = new BigInteger(value, base);
 
             shares.add(new Share(BigInteger.valueOf(index), y));
             i++;
         }
 
-        // -----------------------------
-        // Compute and print secret
-        // -----------------------------
+        // Find the secret
         BigInteger secret = findSecret(shares, k);
-        System.out.println("Secret: " + secret);
+        System.out.println("Secret for " + filename + ": " + secret);
     }
 
-    // =====================================================
-    // Secret reconstruction (Lagrange interpolation)
-    // =====================================================
+    // -------------------- Secret reconstruction --------------------
     static BigInteger findSecret(List<Share> shares, int k) {
         List<List<Share>> comb = new ArrayList<>();
         combinations(shares, k, 0, new ArrayList<>(), comb);
